@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import org.tensorflow.lite.support.audio.TensorAudio
 import org.tensorflow.lite.task.audio.classifier.AudioClassifier
+import org.tensorflow.lite.task.vision.detector.Detection
 import java.util.*
 import kotlin.concurrent.scheduleAtFixedRate
 
@@ -36,9 +37,9 @@ class SnapClassifier {
         classifier = AudioClassifier.createFromFile(context, YAMNET_MODEL)
         Log.d(TAG, "Model loaded from: $YAMNET_MODEL")
         audioInitialize()
-        startRecording()
+        // startRecording()
 
-        startInferencing()
+//        startInferencing()
     }
 
     /**
@@ -64,9 +65,11 @@ class SnapClassifier {
      * This method make recorder start recording.
      * After this function, the microphone is ready for reading.
      */
-    private fun startRecording() {
-        recorder.startRecording()
-        Log.d(TAG, "record started!")
+    fun startRecording() {
+        if (this::recorder.isInitialized) {
+            recorder.startRecording()
+            Log.d(TAG, "record started!")
+        }
     }
 
     /**
@@ -75,9 +78,11 @@ class SnapClassifier {
      * This method make recorder stop recording.
      * After this function, the microphone is unavailable for reading.
      */
-    private fun stopRecording() {
-        recorder.stop()
-        Log.d(TAG, "record stopped.")
+    fun stopRecording() {
+        if (this::recorder.isInitialized) {
+            recorder.stop()
+            Log.d(TAG, "record stopped.")
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
@@ -94,12 +99,18 @@ class SnapClassifier {
      * @return  A score of the maximum float value among three classes
      */
     fun inference(): Float {
-        tensor.load(recorder)
-        Log.d(TAG, tensor.tensorBuffer.shape.joinToString(","))
-        val output = classifier.classify(tensor)
-        Log.d(TAG, output.toString())
+        if (this::tensor.isInitialized) {
+            tensor.load(recorder)
+//             Log.d(TAG, tensor.tensorBuffer.shape.joinToString(","))
+            val output = classifier.classify(tensor)
+             Log.d(TAG, output.toString())
+            val score = output[0].categories.find { it.label == "Walk, footsteps" }!!.score
+            Log.d(TAG, score.toString())
 
-        return output[0].categories.find { it.label == "Finger snapping" }!!.score
+            return output[0].categories.find { it.label == "Walk, footsteps" }!!.score
+        } else {
+            return Float.fromBits(0)
+        }
     }
 
     fun startInferencing() {
@@ -152,6 +163,6 @@ class SnapClassifier {
         const val REFRESH_INTERVAL_MS = 33L
         const val YAMNET_MODEL = "yamnet_classification.tflite"
 
-        const val THRESHOLD = 0.3f
+        const val THRESHOLD = 0.1f
     }
 }

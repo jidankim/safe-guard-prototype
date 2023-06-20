@@ -18,6 +18,8 @@ package com.example.pj4test.fragment
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.media.MediaRecorder
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -25,6 +27,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -36,12 +39,16 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.pj4test.ProjectConfiguration
+import com.example.pj4test.audioInference.SnapClassifier
 import java.util.LinkedList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import com.example.pj4test.cameraInference.PersonClassifier
 import com.example.pj4test.databinding.FragmentCameraBinding
 import org.tensorflow.lite.task.vision.detector.Detection
+import java.io.File
+import java.time.LocalDateTime
+import java.util.Date
 
 class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
     private val TAG = "CameraFragment"
@@ -62,6 +69,17 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
     /** Blocking camera operations are performed using this executor */
     private lateinit var cameraExecutor: ExecutorService
 
+    private lateinit var snapClassifier: SnapClassifier
+    // Camera and audio recording
+    private lateinit var mediaRecorder: MediaRecorder
+    private var isRecording: Boolean = false
+    private var lastRecordedTime: LocalDateTime? = null
+
+    // Email settings
+    private val senderEmail = "your_email@example.com"
+    private val senderPassword = "your_email_password"
+    private val recipientEmail = "recipient_email@example.com"
+
     override fun onDestroyView() {
         _fragmentCameraBinding = null
         super.onDestroyView()
@@ -76,6 +94,9 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
         savedInstanceState: Bundle?
     ): View {
         _fragmentCameraBinding = FragmentCameraBinding.inflate(inflater, container, false)
+
+        // Create an instance of SnapClassifier
+        snapClassifier = SnapClassifier()
 
         return fragmentCameraBinding.root
     }
@@ -98,6 +119,9 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
         }
 
         personView = fragmentCameraBinding.PersonView
+
+        // Create an instance of SnapClassifier
+        snapClassifier = SnapClassifier()
     }
 
     // Initialize CameraX, and prepare to bind the camera use cases
@@ -110,6 +134,8 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
 
                 // Build and bind the camera use cases
                 bindCameraUseCases(cameraProvider)
+
+//                snapClassifier.setObjectDetectionListener(this)
             },
             ContextCompat.getMainExecutor(requireContext())
         )
@@ -186,6 +212,7 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
 
     // Update UI after objects have been detected. Extracts original image height/width
     // to scale and place bounding boxes properly through OverlayView
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun onObjectDetectionResults(
         results: MutableList<Detection>?,
         inferenceTime: Long,
@@ -205,13 +232,26 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
             
             // change UI according to the result
             if (isPersonDetected) {
-                personView.text = "PERSON"
+                personView.text = "UNAUTHORIZED PERSON"
                 personView.setBackgroundColor(ProjectConfiguration.activeBackgroundColor)
                 personView.setTextColor(ProjectConfiguration.activeTextColor)
+
+                // Turn off camera and audio recording
+                if (isRecording && (lastRecordedTime?.isBefore(LocalDateTime.now().minusSeconds(10)) == true)) {
+                    Log.d(TAG, "Stopping Recording with lastRecordedTime $lastRecordedTime")
+                    stopRecording()
+                    // sendRecordedDataViaEmail()
+                }
             } else {
-                personView.text = "NO PERSON"
+                personView.text = "AUTHORIZED PERSON"
                 personView.setBackgroundColor(ProjectConfiguration.idleBackgroundColor)
                 personView.setTextColor(ProjectConfiguration.idleTextColor)
+
+                // Turn on camera and audio recording
+                if (!isRecording) {
+                    // Call the startRecording() method of the SnapClassifier instance
+                    startRecording()
+                }
             }
 
             // Force a redraw
@@ -223,5 +263,50 @@ class CameraFragment : Fragment(), PersonClassifier.DetectorListener {
         activity?.runOnUiThread {
             Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun startRecording() {
+        try {
+            snapClassifier.startRecording()
+            snapClassifier.startInferencing()
+            // Set up the media recorder
+//            val outputFile = createOutputFile()
+//            mediaRecorder = MediaRecorder(requireContext()).apply {
+//                setAudioSource(MediaRecorder.AudioSource.DEFAULT)
+//                setOutputFormat(MediaRecorder.OutputFormat.DEFAULT)
+//                setAudioEncoder(MediaRecorder.AudioEncoder.DEFAULT)
+//                setOutputFile(outputFile.absolutePath)
+//                prepare()
+//                start()
+//            }
+            isRecording = true
+            lastRecordedTime = LocalDateTime.now()
+            Log.d(TAG, "While starting Recording last recorded time to $lastRecordedTime from null")
+            Log.d(TAG, "Recording started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start recording: ${e.message}")
+        }
+    }
+
+    private fun stopRecording() {
+        try {
+//            mediaRecorder.stop()
+//            mediaRecorder.release()
+            snapClassifier.stopInferencing()
+            snapClassifier.stopRecording()
+            isRecording = false
+            Log.d(TAG, "While ending Recording last recorded time to null from $lastRecordedTime")
+            lastRecordedTime = null
+            Log.d(TAG, "Recording ended")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop recording: ${e.message}")
+        }
+    }
+
+    private fun createOutputFile(): File {
+        val outputDir = requireContext().getExternalFilesDir(null)
+        val timestamp = Date().time
+        return File.createTempFile("recording_${timestamp}_", ".3gp", outputDir)
     }
 }

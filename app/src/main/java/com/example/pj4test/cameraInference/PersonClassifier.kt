@@ -105,7 +105,7 @@ class PersonClassifier {
     }
 
     companion object {
-        const val THRESHOLD: Float = 0.5f
+        const val THRESHOLD: Float = 0.4f
         const val NUM_THREADS: Int = 2
         const val MAX_RESULTS: Int = 3
         const val MODEL_NAME = "mobilenet_v1.tflite"
